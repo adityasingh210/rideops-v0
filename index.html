@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RideOps Escalation Pre-Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: top bar + two views. Pre-check = input column left, decision column right. Team view = KPI row, charts, tables. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#15202b; --muted:#5b6876; --line:#dbe1e7;
+  --accent:#1f5fbf; --accent-soft:#e6eefa;
+  --good:#1d7a4c; --good-soft:#e3f3ea; --warn:#a85d00; --warn-soft:#fdf0dc; --bad:#b42323; --bad-soft:#fbe6e6;
+  --display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f151b; --surface:#171f27; --ink:#e6ebf0; --muted:#97a3af; --line:#2a3540;
+    --accent:#6ea2ef; --accent-soft:#1c2c42;
+    --good:#5cc48f; --good-soft:#163024; --warn:#f0a64a; --warn-soft:#33260f; --bad:#f07a7a; --bad-soft:#3a1a1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --surface:#171f27; --ink:#e6ebf0; --muted:#97a3af; --line:#2a3540;
+  --accent:#6ea2ef; --accent-soft:#1c2c42;
+  --good:#5cc48f; --good-soft:#163024; --warn:#f0a64a; --warn-soft:#33260f; --bad:#f07a7a; --bad-soft:#3a1a1a;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:20px;font-weight:800}
+h2{font-size:17px;font-weight:700}
+h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.num,td.n,.mono{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:13px}
+.muted{color:var(--muted)}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.brand{display:flex;flex-direction:column}
+.brand small{color:var(--muted);font-size:12.5px}
+nav{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:8px;border:1px solid var(--line)}
+nav button{font:600 14px var(--body);border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:6px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+main{max-width:1240px;margin:0 auto;padding:20px 16px 48px}
+.view{display:none}.view.on{display:block}
+.grid2{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:20px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.stack{display:flex;flex-direction:column;gap:14px}
+label{font-weight:600;font-size:13.5px;display:block;margin-bottom:5px}
+select,input[type=text],textarea{width:100%;font:15px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:8px 10px}
+textarea{font:13px var(--mono);min-height:170px;resize:vertical}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chip{font:500 13px var(--body);color:var(--accent);background:var(--accent-soft);border:1px solid transparent;border-radius:999px;padding:3px 10px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.sugg{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.sugg button{text-align:left;font:14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer}
+.sugg button:hover{border-color:var(--accent)}
+.sugg button small{display:block;color:var(--muted);font-size:12px}
+.verdict{border-radius:10px;padding:16px 18px;border:1px solid;display:flex;flex-direction:column;gap:6px}
+.verdict .tag{font:800 12px var(--display);letter-spacing:.08em;text-transform:uppercase}
+.verdict .big{font:700 22px/1.25 var(--display)}
+.v-bad{background:var(--bad-soft);border-color:var(--bad);color:var(--ink)} .v-bad .tag{color:var(--bad)}
+.v-warn{background:var(--warn-soft);border-color:var(--warn)} .v-warn .tag{color:var(--warn)}
+.v-good{background:var(--good-soft);border-color:var(--good)} .v-good .tag{color:var(--good)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--bg);border-radius:8px;padding:10px 12px}
+.stat b{display:block;font:700 22px var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--bg)}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+ul.check{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+ul.check li{display:flex;gap:9px;align-items:flex-start}
+ul.check input[type=checkbox]{margin-top:4px;width:16px;height:16px;accent-color:var(--accent)}
+.field{display:grid;grid-template-columns:1fr;gap:4px}
+.field input{font-size:14px;padding:6px 9px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{font:600 14px var(--body);border-radius:7px;padding:8px 14px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:12.5px;border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap}
+td{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:top}
+td.n,th.n{text-align:right}
+.tblwrap{overflow-x:auto}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.p-bad{background:var(--bad-soft);color:var(--bad)} .p-warn{background:var(--warn-soft);color:var(--warn)} .p-good{background:var(--good-soft);color:var(--good)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:2px}
+.kpi .lab{font-size:13px;color:var(--muted);font-weight:500}
+.kpi .val{font:800 28px var(--display);font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:12.5px;color:var(--muted)}
+.kpi.primary{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:760px){.charts{grid-template-columns:1fr}}
+td.mono{white-space:nowrap}
+svg text{fill:var(--muted);font:11px var(--body)}
+.note{font-size:12.5px;color:var(--muted)}
+footer{max-width:1240px;margin:0 auto;padding:0 16px 32px;font-size:12.5px;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>RideOps Escalation Pre-Check</h1><small id="dataline">Loading 1,444 tickets…</small></div>
+  <nav role="tablist" aria-label="Views">
+    <button id="tab-precheck" role="tab" aria-selected="true" data-view="precheck">L1 agent: Pre-check</button>
+    <button id="tab-team" role="tab" aria-selected="false" data-view="team">Support lead: Weekly view</button>
+  </nav>
+</header>
+
+<main>
+<section id="precheck" class="view on" aria-labelledby="tab-precheck">
+  <div class="grid2">
+    <div class="stack">
+      <div class="card stack">
+        <div>
+          <label for="q">What did the client report?</label>
+          <input type="text" id="q" placeholder="e.g. roster still showing cancelled bookings" autocomplete="off">
+          <div class="btnrow" style="margin-top:8px;gap:6px">
+            <span class="note">Try:</span>
+            <button type="button" class="chip" data-q="roster still uses old cutoff">Roster cutoff</button>
+            <button type="button" class="chip" data-q="scheduled report email not received">Report email (known bug)</button>
+            <button type="button" class="chip" data-q="cab location frozen on map">GPS frozen</button>
+          </div>
+          <div class="sugg" id="sugg"></div>
+        </div>
+        <div>
+          <label for="cat">Category</label>
+          <select id="cat"></select>
+        </div>
+        <div>
+          <label for="issue">Closest known issue</label>
+          <select id="issue"></select>
+        </div>
+        <p class="note" style="margin:0">Type the complaint in the client's words and pick the closest match, or choose category and issue directly. History shown is from the last 3 months of the same issue.</p>
+      </div>
+      <div class="card stack">
+        <h3>Past tickets solved at L1 (no reopen)</h3>
+        <div id="ask"></div>
+        <div class="tblwrap"><table id="similar"></table></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div id="verdict" class="verdict"></div>
+      <div class="card stack">
+        <h3>What happened last time this was escalated</h3>
+        <div class="stats" id="stats"></div>
+        <div>
+          <div class="bar" id="outbar"></div>
+          <div class="legend" id="outleg"></div>
+        </div>
+        <p class="note" id="basis" style="margin:0"></p>
+      </div>
+      <div class="card stack">
+        <h3>1 · Check first (these came back as config issues)</h3>
+        <ul class="check" id="cfg"></ul>
+      </div>
+      <div class="card stack">
+        <h3>2 · Collect before escalating (these came back as insufficient info)</h3>
+        <div class="stack" id="collect"></div>
+        <div class="btnrow">
+          <button class="btn" id="mknote" disabled>Fill all fields to build escalation note</button>
+          <button class="btn ghost" id="copy" disabled>Copy note</button>
+          <span class="note" id="copied"></span>
+        </div>
+        <textarea id="noteout" readonly aria-label="Escalation note"></textarea>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="team" class="view" aria-labelledby="tab-team">
+  <div class="stack">
+    <div class="btnrow" style="justify-content:space-between">
+      <h2 id="weektitle">Week</h2>
+      <div class="btnrow"><label for="wk" style="margin:0">Week</label><select id="wk" style="width:auto"></select></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="charts">
+      <div class="card"><h3>Avoidable share of escalations, weekly</h3><div id="c1"></div></div>
+      <div class="card"><h3>Open tickets at week end (and older than 7 days)</h3><div id="c2"></div></div>
+      <div class="card"><h3>Closed within 48 hours, weekly</h3><div id="c3"></div></div>
+      <div class="card"><h3>Tickets created, weekly</h3><div id="c4"></div></div>
+    </div>
+    <div class="card stack">
+      <h3>Agents, all 3 months</h3>
+      <p class="note" style="margin:0">Expected escalation = what the agent would escalate if they matched the team average in each category they handled. Use this to coach, not to rank.</p>
+      <div class="tblwrap"><table id="agents"></table></div>
+    </div>
+    <div class="card stack">
+      <h3>Known issues: escalations engineering marked as duplicates</h3>
+      <p class="note" style="margin:0">Share these with L1 so agents link the existing engineering ticket instead of opening a new escalation.</p>
+      <div class="tblwrap"><table id="known"></table></div>
+    </div>
+  </div>
+</section>
+</main>
+<footer>Data: rideops_support_tickets.csv, 1,444 tickets created 2 Jul to 30 Sep 2026, pulled 30 Sep 2026. Weeks run Monday to Sunday; partial first and last weeks are left out of the weekly view. Checklists are a first draft written from the escalation outcomes and should be refined with engineering.</footer>
+
+<script>
+const AVOID = ["Insufficient info - returned to L1","Config issue - returned to L1","Duplicate of known issue","Not a bug - how-to"];
+const OUTCOMES = [
+  ["Fixed","var(--good)"],
+  ["Insufficient info - returned to L1","var(--warn)"],
+  ["Config issue - returned to L1","#c98a2b"],
+  ["Duplicate of known issue","var(--bad)"],
+  ["Not a bug - how-to","#8a6bbf"],
+  ["Not reproducible","var(--muted)"]
+];
+const PULL = new Date("2026-09-30T23:59");
+
+const PLAYBOOK = {
+  "Roster / booking not syncing":{
+    cfg:["Booking cutoff in client admin settings matches what the client expects","Roster was regenerated after the last cutoff or booking change","Booking source checked: employee app or admin ad-hoc booking","Cancellation was saved before the roster cutoff time"],
+    collect:["Employee IDs affected","Shift date and time","Booking or cancellation time as shown in admin log","Screenshot of roster vs booking screen"]},
+  "Live tracking / GPS incorrect":{
+    cfg:["Driver app has location permission set to Always","Driver app is on the latest version","Tracking link is shared with a role that has access (security team)","Driver phone has mobile data on during the trip"],
+    collect:["Trip ID","Cab number","Time window of wrong location","Driver app version"]},
+  "Report export failing":{
+    cfg:["Date range is 15 days or less (known limit)","Scheduled report recipients list includes the admin's email","Admin checked spam folder for scheduled email","Export retried in a different format (CSV vs Excel)"],
+    collect:["Report name","Date range and format","Admin email","Time of last failed attempt"]},
+  "Cab delay / no-show complaint":{
+    cfg:["Checked trip timeline in ops console (driver arrival vs OTP time)","Vendor and driver contacted through ops desk","Route has no live traffic or road block alert"],
+    collect:["Trip ID","Scheduled vs actual pickup time","Driver call log or GPS trail"]},
+  "How-to / feature request":{
+    cfg:["Answer found in help docs or admin guide","Feature request logged to product board, ticket closed with link"],
+    collect:["Exact setting or feature requested","Client admin who asked"]},
+  "Login / access issue":{
+    cfg:["User has the right role for the module requested","Account not locked after password reset (unlock from admin)","User is logging in on the correct client portal URL"],
+    collect:["User email","Role assigned","Time of last failed login"]},
+  "OTP / boarding issue":{
+    cfg:["Employee phone number on file is correct","OTP used within its validity window","Driver app on latest version"],
+    collect:["Trip ID","Employee ID","OTP shown to employee vs driver","Driver app version"]},
+  "Billing / invoice discrepancy":{
+    cfg:["Rate card effective date covers the trips in question","Cancelled trip and dead-km policy for this client checked","Toll entries checked against trip log for duplicates"],
+    collect:["Invoice number","Disputed trip IDs","Client's expected amount","Rate card version applied"]},
+  "Employee address / geocode change":{
+    cfg:["Address was re-geocoded after the change (pin on map moved)","Roster regenerated after the address update"],
+    collect:["Employee IDs","Old and new address","Date of address change"]},
+  "Driver / vehicle compliance docs":{
+    cfg:["Compliance block toggle is on for this client","Document expiry date entered correctly in vendor portal"],
+    collect:["Vehicle number","Document type and expiry date","Vendor name"]}
+};
+
+let T = [];
+let HIGH_REOPEN = new Set();  // agents whose reopen rate is over 2x team: not suggested as the person to ask
+function flagReopeners(){
+  const team=T.filter(t=>t.reopen).length/T.length, by={};
+  T.forEach(t=>{ (by[t.assigned_agent]=by[t.assigned_agent]||[0,0]); by[t.assigned_agent][0]++; if(t.reopen) by[t.assigned_agent][1]++; });
+  HIGH_REOPEN=new Set(Object.entries(by).filter(([a,[n,r]])=>r/n>2*team).map(([a])=>a));
+}
+const $ = id => document.getElementById(id);
+const pct = x => isFinite(x) ? Math.round(x*100)+"%" : "–";
+const med = a => { if(!a.length) return NaN; const s=[...a].sort((x,y)=>x-y), m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+const hrs = h => !isFinite(h) ? "–" : h<48 ? Math.round(h)+" h" : (h/24).toFixed(1)+" days";
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function parseCSV(text){
+  const rows=[]; let row=[], f="", q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c=='"'){ if(text[i+1]=='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c=='"') q=true;
+    else if(c==','){ row.push(f); f=""; }
+    else if(c=='\n'||c=='\r'){ if(c=='\r'&&text[i+1]=='\n') i++; row.push(f); rows.push(row); row=[]; f=""; }
+    else f+=c;
+  }
+  if(f!==""||row.length){ row.push(f); rows.push(row); }
+  const h=rows.shift();
+  return rows.filter(r=>r.length===h.length).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]])));
+}
+const D = s => s ? new Date(s.replace(" ","T")) : null;
+
+function prep(rows){
+  return rows.map(r=>{
+    const c=D(r.created_at), fc=D(r.final_closed_at);
+    return {...r, c, fc, fic:D(r.first_closed_at),
+      esc: r.escalated_to_eng==="Yes",
+      hours: fc ? (fc-c)/36e5 : null,
+      reopen: +r.reopen_count>0,
+      csat: r.csat_score===""?null:+r.csat_score,
+      avoid: AVOID.includes(r.eng_outcome)};
+  });
+}
+
+/* ---------- Pre-check ---------- */
+const STOP=new Set("the a an is are was to of for in on and not but by be still at with from our my we it this that showing shown".split(" "));
+const toks = s => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(w=>w.length>1&&!STOP.has(w));
+let ISSUES=[];
+function buildIssues(){
+  const m=new Map();
+  T.forEach(t=>{ const k=t.description; if(!m.has(k)) m.set(k,{d:k,cat:t.category,n:0}); m.get(k).n++; });
+  ISSUES=[...m.values()].sort((a,b)=>b.n-a.n);
+  ISSUES.forEach(i=>i.t=new Set(toks(i.d+" "+i.cat)));
+}
+function suggest(q){
+  const qt=toks(q); if(!qt.length) return [];
+  return ISSUES.map(i=>{ let s=0; qt.forEach(w=>{ for(const x of i.t){ if(x===w){s+=2;break;} if(x.startsWith(w.slice(0,4))&&w.length>3){s+=1;break;} } }); return {i,s:s+i.n/1000}; })
+    .filter(x=>x.s>=1).sort((a,b)=>b.s-a.s).slice(0,4).map(x=>x.i);
+}
+function fillCats(){
+  const cats=[...new Set(T.map(t=>t.category))].sort();
+  $("cat").innerHTML=cats.map(c=>`<option>${esc(c)}</option>`).join("");
+}
+function fillIssues(cat, pick){
+  const list=ISSUES.filter(i=>i.cat===cat);
+  $("issue").innerHTML=list.map(i=>`<option value="${esc(i.d)}">${esc(i.d)} (${i.n})</option>`).join("");
+  if(pick) $("issue").value=pick;
+}
+function outcomeShares(set){
+  const n=set.length, o={}; OUTCOMES.forEach(([k])=>o[k]=set.filter(t=>t.eng_outcome===k).length/(n||1)); return o;
+}
+function render(){
+  const cat=$("cat").value, d=$("issue").value;
+  const all=T.filter(t=>t.description===d);
+  let escd=all.filter(t=>t.esc&&t.eng_outcome);
+  let basisCat=false;
+  if(escd.length<5){ escd=T.filter(t=>t.category===cat&&t.esc&&t.eng_outcome); basisCat=true; }
+  const o=outcomeShares(escd);
+  const closed=all.filter(t=>t.fc);
+  const l1=closed.filter(t=>!t.esc);
+  const l1clean=l1.filter(t=>!t.reopen);
+  const l1rate=closed.length? l1clean.length/closed.length : 0;
+  const returned=o["Insufficient info - returned to L1"]+o["Config issue - returned to L1"];
+  const dup=o["Duplicate of known issue"], howto=o["Not a bug - how-to"];
+  const avoid=returned+dup+howto;
+
+  const fixedH=med(escd.filter(t=>t.eng_outcome==="Fixed"&&t.hours!=null).map(t=>t.hours));
+  const retH=med(escd.filter(t=>t.eng_outcome&&t.eng_outcome.includes("returned")&&t.hours!=null).map(t=>t.hours));
+  const l1H=med(l1clean.map(t=>t.hours));
+
+  // verdict
+  let cls,tag,big,why;
+  const engIds=all.filter(t=>t.eng_ticket_id&&(t.eng_outcome==="Fixed"||t.eng_outcome==="Duplicate of known issue")).sort((a,b)=>b.c-a.c).slice(0,3).map(t=>t.eng_ticket_id);
+  if(!basisCat && dup>=0.3){
+    cls="v-bad"; tag="Known issue · do not open a new escalation";
+    big=`${pct(dup)} of past escalations of this issue were duplicates of a known engineering ticket.`;
+    why=`Link the client to the existing engineering ticket${engIds.length?` (latest: <span class="mono">${engIds.map(esc).join(", ")}</span>)`:""}, share the workaround, and set the client's expectation on the fix date.`;
+  } else {
+    cls="v-warn"; tag="Run the pre-check before escalating";
+    big=`${pct(avoid)} of past escalations ${basisCat?"in this category":"of this issue"} bounced back or were not bugs.`;
+    why=`Across every issue type, about half of escalations bounce, so every escalation goes through steps 1 and 2. Bounced escalations took a median of ${hrs(retH)} to close; fixed ones ${hrs(fixedH)}; solved at L1 ${hrs(l1H)}.`;
+  }
+  $("verdict").className="verdict "+cls;
+  $("verdict").innerHTML=`<span class="tag">${tag}</span><span class="big">${big}</span><span>${why}</span>`;
+
+  $("stats").innerHTML=[
+    [all.length,"times seen in 3 months"],
+    [pct(all.length?all.filter(t=>t.esc).length/all.length:NaN),"were escalated"],
+    [pct(avoid),"of escalations avoidable"],
+    [hrs(l1H),"median close at L1"],
+    [hrs(retH),"median close when bounced"]
+  ].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  $("outbar").innerHTML=OUTCOMES.map(([k,c])=>`<i style="width:${o[k]*100}%;background:${c}" title="${esc(k)} ${pct(o[k])}"></i>`).join("");
+  $("outleg").innerHTML=OUTCOMES.map(([k,c])=>`<span><i style="background:${c}"></i>${esc(k.replace(" - returned to L1",", returned"))} ${pct(o[k])}</span>`).join("");
+  $("basis").textContent = basisCat
+    ? `This exact issue was escalated fewer than 5 times, so outcome shares use all ${escd.length} escalations in "${cat}".`
+    : `Based on ${escd.length} past escalations of this exact issue.`;
+
+  // similar + who to ask
+  const sim=l1clean.sort((a,b)=>b.c-a.c);
+  const byAgent={}; sim.filter(t=>!HIGH_REOPEN.has(t.assigned_agent)).forEach(t=>byAgent[t.assigned_agent]=(byAgent[t.assigned_agent]||0)+1);
+  const top=Object.entries(byAgent).sort((a,b)=>b[1]-a[1])[0];
+  $("ask").innerHTML = top ? `<p style="margin:0">Ask <b>${esc(top[0])}</b>: solved ${top[1]} of these at L1 with no reopen.</p>` : `<p class="note" style="margin:0">No L1 resolution of this exact issue yet.</p>`;
+  $("similar").innerHTML = sim.length ? `<tr><th>Ticket</th><th>Client</th><th>Agent</th><th class="n">Closed in</th></tr>`+
+    sim.slice(0,6).map(t=>`<tr><td class="mono">${esc(t.ticket_id)}</td><td>${esc(t.client_name)}</td><td>${esc(t.assigned_agent)}</td><td class="n">${hrs(t.hours)}</td></tr>`).join("") : "";
+
+  // checklists
+  const pb=PLAYBOOK[cat]||{cfg:[],collect:[]};
+  $("cfg").innerHTML=pb.cfg.map((c,i)=>`<li><input type="checkbox" id="cfg${i}"><label for="cfg${i}" style="font-weight:400;margin:0">${esc(c)}</label></li>`).join("");
+  $("collect").innerHTML=["Support ticket ID and client"].concat(pb.collect).map((c,i)=>`<div class="field"><label for="col${i}" style="margin:0">${esc(c)}</label><input type="text" id="col${i}" data-k="${esc(c)}"></div>`).join("");
+  $("noteout").value=""; $("copy").disabled=true; $("copied").textContent="";
+  $("collect").querySelectorAll("input").forEach(x=>x.addEventListener("input",gate));
+  $("cfg").querySelectorAll("input").forEach(x=>x.addEventListener("change",gate));
+  gate();
+  window._ctx={cat,d,cls,engIds};
+}
+function gate(){
+  const fields=[...$("collect").querySelectorAll("input")];
+  const ok=fields.every(f=>f.value.trim());
+  const b=$("mknote"); b.disabled=!ok;
+  b.textContent= ok ? "Build escalation note" : `Fill all ${fields.length} fields to build escalation note`;
+}
+$("mknote").addEventListener("click",()=>{
+  const c=window._ctx;
+  const done=[...$("cfg").querySelectorAll("input")].map((x,i)=>`  [${x.checked?"x":" "}] ${PLAYBOOK[c.cat].cfg[i]}`);
+  const f=[...$("collect").querySelectorAll("input")].map(x=>`  ${x.dataset.k}: ${x.value.trim()}`);
+  $("noteout").value=`ESCALATION TO ENGINEERING\nCategory: ${c.cat}\nIssue: ${c.d}\n\nL1 checks done:\n${done.join("\n")}\n\nDetails:\n${f.join("\n")}\n`+(c.engIds.length?`\nRelated engineering tickets: ${c.engIds.join(", ")}\n`:"");
+  $("copy").disabled=false;
+});
+$("copy").addEventListener("click",async()=>{
+  try{ await navigator.clipboard.writeText($("noteout").value); $("copied").textContent="Copied."; }
+  catch(e){ $("noteout").select(); $("copied").textContent="Select the text and copy it."; }
+});
+$("q").addEventListener("input",e=>{
+  const s=suggest(e.target.value);
+  $("sugg").innerHTML=s.map((i,k)=>`<button type="button" data-k="${k}">${esc(i.d)}<small>${esc(i.cat)} · seen ${i.n} times</small></button>`).join("");
+  $("sugg").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ const i=s[+b.dataset.k]; $("cat").value=i.cat; fillIssues(i.cat,i.d); render(); }));
+});
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
+  $("q").value=c.dataset.q; $("q").dispatchEvent(new Event("input"));
+  const s=suggest(c.dataset.q); if(s[0]){ $("cat").value=s[0].cat; fillIssues(s[0].cat,s[0].d); render(); }
+}));
+$("cat").addEventListener("change",()=>{ fillIssues($("cat").value); render(); });
+$("issue").addEventListener("change",render);
+
+/* ---------- Team view ---------- */
+const monday = d => { const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
+const fmt = d => d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+let WEEKS=[];
+function weekly(){
+  const starts=[]; for(let d=new Date("2026-07-06T00:00"); d<new Date("2026-09-28T00:00"); d.setDate(d.getDate()+7)) starts.push(new Date(d));
+  WEEKS=starts.map(s=>{
+    const e=new Date(s); e.setDate(e.getDate()+7);
+    const cr=T.filter(t=>t.c>=s&&t.c<e);
+    const es=cr.filter(t=>t.esc&&t.eng_outcome);
+    const end=new Date(e-60000);
+    const open=T.filter(t=>t.c<=end&&(!t.fc||t.fc>end));
+    const old=open.filter(t=>(end-t.c)/864e5>7);
+    const in48=cr.filter(t=>t.hours!=null&&t.hours<=48).length/cr.length;
+    const cs=cr.filter(t=>t.csat!=null);
+    return {s, label:fmt(s), created:cr.length, escN:cr.filter(t=>t.esc).length,
+      avoid: es.filter(t=>t.avoid).length/(es.length||1), in48, open:open.length, old:old.length,
+      reopen: cr.filter(t=>t.reopen).length/cr.length, csat: cs.reduce((a,t)=>a+t.csat,0)/(cs.length||1)};
+  });
+  $("wk").innerHTML=WEEKS.map((w,i)=>`<option value="${i}">${w.label} to ${fmt(new Date(w.s.getTime()+6*864e5))}</option>`).join("");
+  $("wk").value=WEEKS.length-1;
+}
+function delta(cur,prev,goodDown,fmtf){
+  if(prev==null) return "";
+  const d=cur-prev; if(Math.abs(d)<1e-9) return `<span class="sub">same as previous week</span>`;
+  const good = goodDown ? d<0 : d>0;
+  return `<span class="pill ${good?"p-good":"p-bad"}">${d>0?"▲":"▼"} ${fmtf(Math.abs(d))}</span> <span class="sub">vs previous week</span>`;
+}
+function renderTeam(){
+  const i=+$("wk").value, w=WEEKS[i], p=WEEKS[i-1];
+  $("weektitle").textContent=`Week of ${w.label}`;
+  const pp = x=>Math.round(x*100)+" pts";
+  const k=[
+    ["Avoidable share of escalations",pct(w.avoid),delta(w.avoid,p&&p.avoid,true,pp),`Target under 25%. ${w.escN} escalations this week.`,true],
+    ["Open older than 7 days",w.old,delta(w.old,p&&p.old,true,x=>x),`${w.open} open in total at week end`],
+    ["Closed within 48 hours",pct(w.in48),delta(w.in48,p&&p.in48,false,pp),`${w.created} tickets created`],
+    ["Reopen rate (guardrail)",pct(w.reopen),delta(w.reopen,p&&p.reopen,true,pp),"Should not rise as speed improves"],
+    ["CSAT (guardrail)",w.csat.toFixed(2),delta(w.csat,p&&p.csat,false,x=>x.toFixed(2)),"Average of responses, 1 to 5"]
+  ];
+  $("kpis").innerHTML=k.map(([l,v,d,s,pr])=>`<div class="kpi${pr?" primary":""}"><span class="lab">${l}</span><span class="val">${v}</span><span>${d}</span><span class="sub">${s}</span></div>`).join("");
+  $("c1").innerHTML=line(WEEKS.map(x=>x.avoid*100),[],{max:100,unit:"%",hi:i,target:25});
+  $("c2").innerHTML=line(WEEKS.map(x=>x.open),WEEKS.map(x=>x.old),{hi:i});
+  $("c3").innerHTML=line(WEEKS.map(x=>x.in48*100),[],{max:100,unit:"%",hi:i});
+  $("c4").innerHTML=line(WEEKS.map(x=>x.created),[],{hi:i});
+}
+function line(a,b,o){
+  const W=520,H=190,L=34,R=10,Tp=12,B=26;
+  const max=o.max||Math.ceil(Math.max(...a,...b)*1.15/10)*10;
+  const x=i=>L+i*(W-L-R)/(a.length-1), y=v=>Tp+(H-Tp-B)*(1-v/max);
+  const ticks=[0,max/2,max];
+  let g=ticks.map(t=>`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L-6}" y="${y(t)+4}" text-anchor="end">${Math.round(t)}${o.unit||""}</text>`).join("");
+  if(o.target!=null) g+=`<line x1="${L}" x2="${W-R}" y1="${y(o.target)}" y2="${y(o.target)}" stroke="var(--good)" stroke-dasharray="4 4"/><text x="${W-R}" y="${y(o.target)-5}" text-anchor="end" style="fill:var(--good)">target ${o.target}${o.unit||""}</text>`;
+  const lbl=WEEKS.map((w,i)=>i%2===0?`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${w.label}</text>`:"").join("");
+  const path=arr=>arr.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const area=`${path(a)}L${x(a.length-1)},${y(0)}L${x(0)},${y(0)}Z`;
+  let s=`<path d="${area}" fill="var(--accent)" opacity=".10"/><path d="${path(a)}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>`;
+  if(b.length) s+=`<path d="${path(b)}" fill="none" stroke="var(--warn)" stroke-width="2" stroke-dasharray="5 3"/>`;
+  s+=`<circle cx="${x(o.hi)}" cy="${y(a[o.hi])}" r="4.5" fill="var(--accent)"/><text x="${x(o.hi)}" y="${y(a[o.hi])-9}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${Math.round(a[o.hi])}${o.unit||""}</text>`;
+  if(b.length) s+=`<circle cx="${x(o.hi)}" cy="${y(b[o.hi])}" r="4" fill="var(--warn)"/>`;
+  const leg=b.length?`<div class="legend"><span><i style="background:var(--accent)"></i>All open</span><span><i style="background:var(--warn)"></i>Older than 7 days</span></div>`:"";
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">${g}${lbl}${s}</svg>${leg}`;
+}
+function agents(){
+  const catRate={}; [...new Set(T.map(t=>t.category))].forEach(c=>{ const s=T.filter(t=>t.category===c); catRate[c]=s.filter(t=>t.esc).length/s.length; });
+  const by={}; T.forEach(t=>(by[t.assigned_agent]=by[t.assigned_agent]||[]).push(t));
+  const teamReopen=T.filter(t=>t.reopen).length/T.length;
+  const rows=Object.entries(by).map(([a,s])=>{
+    const e=s.filter(t=>t.esc), eo=e.filter(t=>t.eng_outcome), cs=s.filter(t=>t.csat!=null);
+    return {a,n:s.length, esc:e.length/s.length, exp:s.reduce((x,t)=>x+catRate[t.category],0)/s.length,
+      avoid:eo.filter(t=>t.avoid).length/(eo.length||1), reopen:s.filter(t=>t.reopen).length/s.length,
+      med:med(s.filter(t=>t.hours!=null).map(t=>t.hours)), csat:cs.reduce((x,t)=>x+t.csat,0)/(cs.length||1)};
+  }).sort((x,y)=>x.med-y.med);
+  $("agents").innerHTML=`<tr><th>Agent</th><th class="n">Tickets</th><th class="n">Median close</th><th class="n">Escalated</th><th class="n">Expected</th><th class="n">Avoidable of escalated</th><th class="n">Reopened</th><th class="n">CSAT</th><th>Coaching flag</th></tr>`+
+    rows.map(r=>{
+      const f=[]; if(r.esc/r.exp>1.4) f.push(`<span class="pill p-warn">Over-escalates</span>`);
+      if(r.reopen>2*teamReopen) f.push(`<span class="pill p-bad">Closes too early</span>`);
+      if(r.avoid>0.6) f.push(`<span class="pill p-warn">Many escalations bounce</span>`);
+      return `<tr><td>${esc(r.a)}</td><td class="n">${r.n}</td><td class="n">${hrs(r.med)}</td><td class="n">${pct(r.esc)}</td><td class="n">${pct(r.exp)}</td><td class="n">${pct(r.avoid)}</td><td class="n">${pct(r.reopen)}</td><td class="n">${r.csat.toFixed(2)}</td><td>${f.join(" ")||'<span class="muted">–</span>'}</td></tr>`;
+    }).join("");
+}
+function known(){
+  const m={}; T.filter(t=>t.esc&&t.eng_outcome).forEach(t=>(m[t.description]=m[t.description]||[]).push(t));
+  const rows=Object.entries(m).map(([d,s])=>({d,cat:s[0].category,n:s.length,dup:s.filter(t=>t.eng_outcome==="Duplicate of known issue").length/s.length}))
+    .filter(r=>r.n>=5&&r.dup>=0.2).sort((a,b)=>b.dup-a.dup);
+  $("known").innerHTML=`<tr><th>Issue</th><th>Category</th><th class="n">Escalations</th><th class="n">Duplicate</th></tr>`+
+    rows.map(r=>`<tr><td>${esc(r.d)}</td><td class="muted">${esc(r.cat)}</td><td class="n">${r.n}</td><td class="n"><span class="pill ${r.dup>=.3?"p-bad":"p-warn"}">${pct(r.dup)}</span></td></tr>`).join("");
+}
+
+/* ---------- tabs ---------- */
+function show(v){
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id===v));
+  document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
+  if(location.hash!=="#"+v) history.replaceState(null,"","#"+v);
+}
+document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.view)));
+window.addEventListener("hashchange",()=>{ const h=location.hash.slice(1); if(h==="team"||h==="precheck") show(h); });
+$("wk").addEventListener("change",renderTeam);
+
+fetch("tickets.csv").then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); }).then(txt=>{
+  T=prep(parseCSV(txt));
+  $("dataline").textContent=`Running on ${T.length.toLocaleString("en-IN")} tickets · 2 Jul to 30 Sep 2026`;
+  flagReopeners(); buildIssues(); fillCats();
+  const start="Booking cutoff changed but roster still uses old cutoff";
+  const si=ISSUES.find(i=>i.d===start)||ISSUES[0];
+  $("cat").value=si.cat; fillIssues(si.cat,si.d);
+  $("q").value="roster still uses old cutoff"; $("q").dispatchEvent(new Event("input"));
+  render(); weekly(); renderTeam(); agents(); known();
+  const h=location.hash.slice(1); if(h==="team") show("team");
+}).catch(e=>{ $("dataline").textContent="Could not load tickets.csv. Keep it in the same folder as index.html and open through a web server."; });
+</script>
+</body>
+</html>
